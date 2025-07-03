@@ -128,19 +128,38 @@ export default function PodcastGenerator() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1',
           messages: [
             {
               role: 'system',
-              content:
-                'You are a podcast script writer. Generate a lively, engaging podcast transcript with one host (labelled “Host:”) and one guest (labelled “Guest:”). The full transcript should run approximately 10 minutes when read aloud (around 1 200–1 500 English words, adjust as needed). Make the content highly creative and immersive: for history topics, invent a fictional eyewitness as the guest, who recounts events with twists and dramatic turns. Structure the conversation in 8–10 back-and-forth dialogue turns, each revealing new surprises or emotional beats to keep listeners hooked. Reply only with the transcript.',
+              content: [
+                'You are a podcast script writer. Generate a lively, engaging podcast transcript',
+                'with one host (labelled "Host:") and one guest (labelled "Guest:").',
+                'The full transcript should run approximately 10 minutes when read aloud',
+                '(around 1 200–1 500 English words, adjust as needed).',
+                'Make the content highly creative and immersive: for history topics, invent a',
+                'fictional eyewitness as the guest, who recounts events with twists and dramatic turns.',
+                'Structure the conversation in 8–10 back-and-forth dialogue turns, each revealing',
+                'new surprises or emotional beats to keep listeners hooked.',
+                'The transcript should use the same language as the prompt language',
+                '(except for the `Host:` and `Guest:` labels).',
+                'For example, if the prompt is in Chinese, your script should also use Chinese.',
+                'Reply only with the transcript.'
+              ].join(' '),
             },
-            { role: 'user', content: `Podcast topic: ${topic}` },
+            { 
+              role: 'user', 
+              content: `Podcast topic: ${topic}` 
+            },
           ],
           temperature: 0.8,
         }),
       });
-      if (!chatRes.ok) throw new Error(`Chat API → ${chatRes.status} ${chatRes.statusText}`);
+      
+      if (!chatRes.ok) {
+        throw new Error(`Chat API → ${chatRes.status} ${chatRes.statusText}`);
+      }
+      
       const chatData = await chatRes.json();
       const content = chatData.choices?.[0]?.message?.content ?? '';
       setTranscript(content);
@@ -151,6 +170,7 @@ export default function PodcastGenerator() {
       const chunks: Chunk[] = [];
       let curr: 'host' | 'guest' | null = null;
       let buf = '';
+      
       const who = (l: string): 'host' | 'guest' | null =>
         l.startsWith('Host:') ? 'host' : l.startsWith('Guest:') ? 'guest' : null;
 
@@ -180,11 +200,24 @@ export default function PodcastGenerator() {
             'Content-Type': 'application/json',
             Accept: 'audio/mpeg',
           },
-          body: JSON.stringify({ model: 'tts-1', voice, input: chunk.text, format: 'mp3' }),
+          body: JSON.stringify({ 
+            model: 'tts-1', 
+            voice, 
+            input: chunk.text, 
+            format: 'mp3' 
+          }),
         });
-        if (!speechRes.ok) throw new Error(`TTS API → ${speechRes.status} ${speechRes.statusText}`);
+        
+        if (!speechRes.ok) {
+          throw new Error(`TTS API → ${speechRes.status} ${speechRes.statusText}`);
+        }
+        
         const bufArr = await speechRes.arrayBuffer();
-        segs.push({ url: URL.createObjectURL(new Blob([bufArr], { type: 'audio/mpeg' })), speaker: chunk.speaker, text: chunk.text });
+        segs.push({ 
+          url: URL.createObjectURL(new Blob([bufArr], { type: 'audio/mpeg' })), 
+          speaker: chunk.speaker, 
+          text: chunk.text 
+        });
       }
       setSegments(segs);
       
@@ -204,7 +237,9 @@ export default function PodcastGenerator() {
     audioRef.current.playbackRate = playbackSpeed;
     audioRef.current.play();
   };
+  
   const pauseCurrent = () => audioRef.current?.pause();
+  
   const skipNext = () => {
     if (currentIdx + 1 < segments.length) setCurrentIdx((i) => i + 1);
   };
@@ -259,7 +294,11 @@ export default function PodcastGenerator() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold">Podcast History</h3>
                   {podcastHistory.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={clearHistory}>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={clearHistory}
+                    >
                       Clear All
                     </Button>
                   )}
@@ -289,18 +328,35 @@ export default function PodcastGenerator() {
           {/* API key */}
           <label className="flex flex-col gap-1">
             <span className="font-medium">OpenAI API Key</span>
-            <Input type="password" placeholder="sk-..." value={apiKey} onChange={handleApiKeyChange} />
+            <Input 
+              type="password" 
+              placeholder="sk-..." 
+              value={apiKey} 
+              onChange={handleApiKeyChange} 
+            />
           </label>
 
           {/* Topic */}
           <label className="flex flex-col gap-1">
             <span className="font-medium">Podcast Topic / Prompt</span>
-            <Input placeholder="The charm of classical music" value={topic} onChange={(e) => setTopic(e.target.value)} />
+            <Input 
+              placeholder="The charm of classical music" 
+              value={topic} 
+              onChange={(e) => setTopic(e.target.value)} 
+            />
           </label>
 
-          <Button onClick={generatePodcast} disabled={loading} className="self-start">
+          <Button 
+            onClick={generatePodcast} 
+            disabled={loading} 
+            className="self-start"
+          >
             {loading ? (
-              <motion.div initial={{ rotate: 0 }} animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}>
+              <motion.div 
+                initial={{ rotate: 0 }} 
+                animate={{ rotate: 360 }} 
+                transition={{ repeat: Infinity, duration: 1 }}
+              >
                 <Loader2 className="w-4 h-4" />
               </motion.div>
             ) : (
@@ -313,7 +369,11 @@ export default function PodcastGenerator() {
           {error && <p className="text-red-500 text-sm">{error}</p>}
 
           {transcript && (
-            <Textarea className="h-64 mt-4" value={transcript} readOnly />
+            <Textarea 
+              className="h-64 mt-4" 
+              value={transcript} 
+              readOnly 
+            />
           )}
 
           {/* Playback controls */}
@@ -327,7 +387,11 @@ export default function PodcastGenerator() {
                 <Button size="icon" onClick={pauseCurrent}>
                   <Pause className="w-4 h-4" />
                 </Button>
-                <Button size="icon" onClick={skipNext} disabled={currentIdx + 1 >= segments.length}>
+                <Button 
+                  size="icon" 
+                  onClick={skipNext} 
+                  disabled={currentIdx + 1 >= segments.length}
+                >
                   <SkipForward className="w-4 h-4" />
                 </Button>
                 <span className="text-sm">{currentIdx + 1}/{segments.length}</span>
@@ -357,7 +421,9 @@ export default function PodcastGenerator() {
                   <div className="text-xs text-gray-500 mb-1">
                     {segments[currentIdx].speaker === 'host' ? '🎙️ Host' : '👤 Guest'}
                   </div>
-                  <div className="text-sm">{segments[currentIdx].text.slice(0, 150)}...</div>
+                  <div className="text-sm">
+                    {segments[currentIdx].text.slice(0, 150)}...
+                  </div>
                 </div>
               )}
 
