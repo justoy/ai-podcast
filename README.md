@@ -2,6 +2,7 @@
 
 Generate full podcast episodes on‑demand with OpenAI—one **Host** (male voice) and one **Guest** (female voice).  Runs 100 % on the client side; users paste their own API key, type a topic, and get a transcript plus playable audio.
 
+Demo Link: https://ai-podcast-one.vercel.app
 ---
 
 ## ✨ Features
