@@ -148,18 +148,18 @@ export default function PodcastGenerator() {
       };
 
       const systemPrompt = [
-        'You are a podcast script writer. Generate a lively, engaging podcast transcript',
+        'You are a podcast script writer. Generate a lively, engaging podcast script',
         'with one host (labelled "Host:") and one guest (labelled "Guest:"). Host is a man, and the guest is a woman.',
-        'The full transcript should run approximately 10 minutes when read aloud',
+        'The full script should run approximately 10 minutes when read aloud',
         '(around 1 200–1 500 English words, adjust as needed).',
         'Make the content highly creative and immersive: for history topics, invent a',
         'fictional eyewitness as the guest, who recounts events with twists and dramatic turns.',
         'Structure the conversation in 8–10 back-and-forth dialogue turns, each revealing',
         'new surprises or emotional beats to keep listeners hooked.',
-        'The transcript should use the same language as the prompt language',
+        'The script should use the same language as the prompt language',
         '(except for the `Host:` and `Guest:` labels).',
         'For example, if the prompt is in Chinese, your script must be in Chinese too.',
-        'Reply only with the transcript of the conversation between the host and the guest. No Music or other content.'
+        'Reply only with the script of the conversation between the host and the guest. No Music or other content.'
       ].join(' ');
 
       const response = await ai.models.generateContent({
