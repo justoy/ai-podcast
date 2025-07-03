@@ -133,7 +133,7 @@ export default function PodcastGenerator() {
             {
               role: 'system',
               content:
-                'You are a podcast script writer. Generate a lively podcast transcript with one host (labelled "Host:") and one guest (labelled "Guest:"), 8‑10 dialogue turns (~800‑1000 words). Reply only with the transcript.',
+                'You are a podcast script writer. Generate a lively, engaging podcast transcript with one host (labelled “Host:”) and one guest (labelled “Guest:”). The full transcript should run approximately 10 minutes when read aloud (around 1 200–1 500 English words, adjust as needed). Make the content highly creative and immersive: for history topics, invent a fictional eyewitness as the guest, who recounts events with twists and dramatic turns. Structure the conversation in 8–10 back-and-forth dialogue turns, each revealing new surprises or emotional beats to keep listeners hooked. Reply only with the transcript.',
             },
             { role: 'user', content: `Podcast topic: ${topic}` },
           ],
