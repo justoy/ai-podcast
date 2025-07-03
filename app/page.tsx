@@ -128,7 +128,7 @@ export default function PodcastGenerator() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4.1',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -201,7 +201,7 @@ export default function PodcastGenerator() {
             Accept: 'audio/mpeg',
           },
           body: JSON.stringify({ 
-            model: 'tts-1', 
+            model: 'gpt-4o-mini-tts', 
             voice, 
             input: chunk.text, 
             format: 'mp3' 
