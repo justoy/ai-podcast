@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Podcast Generator
 
-## Getting Started
+Generate full podcast episodes on‑demand with OpenAI—one **Host** (male voice) and one **Guest** (female voice).  Runs 100 % on the client side; users paste their own API key, type a topic, and get a transcript plus playable audio.
 
-First, run the development server:
+---
+
+## ✨ Features
+
+* **Chat‑powered script** · 8–10 turns (\~1 k words) with `Host:` / `Guest:` labels.
+* **Dual‑voice TTS** · Host → `alloy` (male), Guest → `nova` (female).
+* **Segmented playback** with Play / Pause / Skip and turn counter.
+* **Key stored locally** (no server; nothing leaves the browser).
+* Beautiful UI built with **Next.js 14 / React Server Components**, **Tailwind CSS v4**, **shadcn/ui**, **Lucide icons**, **Framer Motion**.
+
+---
+
+## 🖥️ Quick start
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit [http://localhost:3000](http://localhost:3000), paste your **OpenAI API key**, enter a topic like *“The future of quantum computing”*, click **Generate Podcast**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🔧 How it works
 
-## Learn More
+1. **Transcript** — Calls the Chat Completions endpoint (`gpt-4o-mini`) with a system prompt that enforces the Host/Guest format.
+2. **Chunking** — Splits the returned text into speaker‑specific chunks.
+3. **TTS** — Sends each chunk to the Audio → Speech endpoint (`tts-1`) with the appropriate voice; receives MP3 blobs.
+4. **Playback** — Queues blobs in an `<audio>` tag and exposes minimal controls.
 
-To learn more about Next.js, take a look at the following resources:
+Everything happens in the browser—no serverless functions, no env vars.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🚀 Deploying to Vercel
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Connect the repo at [https://vercel.com/new](https://vercel.com/new), accept defaults, **Deploy**.  Since all calls are client‑side, no additional Vercel settings are required.
