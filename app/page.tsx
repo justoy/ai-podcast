@@ -158,8 +158,8 @@ export default function PodcastGenerator() {
         'new surprises or emotional beats to keep listeners hooked.',
         'The transcript should use the same language as the prompt language',
         '(except for the `Host:` and `Guest:` labels).',
-        'For example, if the prompt is in Chinese, your script should also use Chinese.',
-        'Reply only with the transcript.'
+        'For example, if the prompt is in Chinese, your script must be in Chinese too.',
+        'Reply only with the transcript of the conversation between the host and the guest. No Music or other content.'
       ].join(' ');
 
       const response = await ai.models.generateContent({
