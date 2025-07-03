@@ -175,7 +175,7 @@ export default function PodcastGenerator() {
               </motion.div>
             ) : (
               <>
-                <Mic className="w-4 h-4 mr-2" http://localhost:3000//> Generate Podcast
+                <Mic className="w-4 h-4 mr-2" /> Generate Podcast
               </>
             )}
           </Button>
