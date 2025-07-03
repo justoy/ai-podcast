@@ -5,8 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Mic, Play, Pause, SkipForward, History, ChevronDown } from "lucide-react";
+import { Loader2, Mic, Play, Pause, SkipForward, History } from "lucide-react";
 import { motion } from 'framer-motion';
+import { GoogleGenAI } from "@google/genai";
 
 type PodcastSegment = { url: string; speaker: 'host' | 'guest'; text: string };
 
@@ -20,8 +21,8 @@ type StoredPodcast = {
 
 /**
  * PodcastGenerator – client‑side component that:
- * 1. Persists the user‑provided OpenAI key in localStorage.
- * 2. Generates a host/guest transcript (labels "Host:" / "Guest:") via Chat Completions.
+ * 1. Persists the user‑provided Gemini API key in localStorage.
+ * 2. Generates a host/guest transcript (labels "Host:" / "Guest:") via Gemini Pro 2.5 with thinking and web search.
  * 3. Splits the transcript into speaker chunks, then calls TTS once per chunk with
  *    different voices (male = "alloy" for host, female = "nova" for guest).
  * 4. Plays the resulting audio segments sequentially with minimal controls.
@@ -29,6 +30,7 @@ type StoredPodcast = {
  */
 export default function PodcastGenerator() {
   const [apiKey, setApiKey] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
   const [topic, setTopic] = useState('');
   const [transcript, setTranscript] = useState('');
   const [segments, setSegments] = useState<PodcastSegment[]>([]);
@@ -42,10 +44,12 @@ export default function PodcastGenerator() {
 
   const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-  /** Load persisted key and history once */
+  /** Load persisted keys and history once */
   useEffect(() => {
-    const stored = localStorage.getItem('openai_api_key') ?? '';
-    if (stored) setApiKey(stored);
+    const geminiKey = localStorage.getItem('gemini_api_key') ?? '';
+    const openaiApiKey = localStorage.getItem('openai_api_key') ?? '';
+    if (geminiKey) setApiKey(geminiKey);
+    if (openaiApiKey) setOpenaiKey(openaiApiKey);
     
     loadPodcastHistory();
   }, []);
@@ -53,6 +57,12 @@ export default function PodcastGenerator() {
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const key = e.target.value.trim();
     setApiKey(key);
+    localStorage.setItem('gemini_api_key', key);
+  };
+
+  const handleOpenaiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const key = e.target.value.trim();
+    setOpenaiKey(key);
     localStorage.setItem('openai_api_key', key);
   };
 
@@ -111,7 +121,8 @@ export default function PodcastGenerator() {
   /** Generate transcript → TTS segments */
   const generatePodcast = async () => {
     setError('');
-    if (!apiKey) return setError('Please provide your OpenAI API key.');
+    if (!apiKey) return setError('Please provide your Gemini API key.');
+    if (!openaiKey) return setError('Please provide your OpenAI API key for TTS.');
     if (!topic) return setError('Please enter a topic.');
 
     setLoading(true);
@@ -120,51 +131,44 @@ export default function PodcastGenerator() {
     setCurrentIdx(0);
 
     try {
-      /* ---------- 1) Chat transcript ---------- */
-      const chatRes = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
+      /* ---------- 1) Chat transcript using Gemini ---------- */
+      const ai = new GoogleGenAI({ apiKey });
+
+      // Configure grounding tool for web search
+      const groundingTool = {
+        googleSearch: {},
+      };
+
+      // Configure generation settings with thinking and web search
+      const config = {
+        tools: [groundingTool],
+        thinkingConfig: {
+          thinkingBudget: 30000, // Enable thinking
         },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          tools: [{"type": "web_search_preview"}],
-          input: [
-            {
-              role: 'system',
-              content: [
-                'You are a podcast script writer. Generate a lively, engaging podcast transcript',
-                'with one host (labelled "Host:") and one guest (labelled "Guest:"). Host is a man, and the guest is a woman.',
-                'The full transcript should run approximately 10 minutes when read aloud',
-                '(around 1 200–1 500 English words, adjust as needed).',
-                'Make the content highly creative and immersive: for history topics, invent a',
-                'fictional eyewitness as the guest, who recounts events with twists and dramatic turns.',
-                'Structure the conversation in 8–10 back-and-forth dialogue turns, each revealing',
-                'new surprises or emotional beats to keep listeners hooked.',
-                'The transcript should use the same language as the prompt language',
-                '(except for the `Host:` and `Guest:` labels).',
-                'For example, if the prompt is in Chinese, your script should also use Chinese.',
-                'Reply only with the transcript.'
-              ].join(' ')
-            },
-            {
-              role: 'user',
-              content: `Podcast topic: ${topic}`
-            }
-          ],
-          temperature: 0.8,
-        }),
+      };
+
+      const systemPrompt = [
+        'You are a podcast script writer. Generate a lively, engaging podcast transcript',
+        'with one host (labelled "Host:") and one guest (labelled "Guest:"). Host is a man, and the guest is a woman.',
+        'The full transcript should run approximately 10 minutes when read aloud',
+        '(around 1 200–1 500 English words, adjust as needed).',
+        'Make the content highly creative and immersive: for history topics, invent a',
+        'fictional eyewitness as the guest, who recounts events with twists and dramatic turns.',
+        'Structure the conversation in 8–10 back-and-forth dialogue turns, each revealing',
+        'new surprises or emotional beats to keep listeners hooked.',
+        'The transcript should use the same language as the prompt language',
+        '(except for the `Host:` and `Guest:` labels).',
+        'For example, if the prompt is in Chinese, your script should also use Chinese.',
+        'Reply only with the transcript.'
+      ].join(' ');
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: `${systemPrompt}\n\nPodcast topic: ${topic}`,
+        config,
       });
       
-      if (!chatRes.ok) {
-        throw new Error(`Chat API → ${chatRes.status} ${chatRes.statusText}`);
-      }
-      
-      const chatData = await chatRes.json();
-      // Find the message output in the response
-      const messageOutput = chatData.output?.find((item: any) => item.type === 'message');
-      const content = messageOutput?.content?.[0]?.text ?? '';
+      const content = response.text || '';
       setTranscript(content);
 
       /* ---------- 2) Split by speaker ---------- */
@@ -175,7 +179,7 @@ export default function PodcastGenerator() {
       let buf = '';
       
       const who = (l: string): 'host' | 'guest' | null =>
-        l.startsWith('Host:') ? 'host' : l.startsWith('Guest:') ? 'guest' : null;
+        l.includes('Host:') ? 'host' : l.includes('Guest:') ? 'guest' : null;
 
       for (const line of lines) {
         const s = who(line);
@@ -186,9 +190,11 @@ export default function PodcastGenerator() {
           }
           curr = s;
           buf += line.replace(/^.*?[:：]\s*/, ' ') + ' ';
-        } else {
+        } else if (curr) {
+          // Only add content to buffer if we're already inside a speaker section
           buf += line + ' ';
         }
+        // Skip lines that don't have Host: or Guest: and we're not in a speaker section
       }
       if (curr && buf) chunks.push({ speaker: curr, text: buf });
 
@@ -199,12 +205,12 @@ export default function PodcastGenerator() {
         const speechRes = await fetch('https://api.openai.com/v1/audio/speech', {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${apiKey}`,
+            Authorization: `Bearer ${openaiKey}`,
             'Content-Type': 'application/json',
             Accept: 'audio/mpeg',
           },
           body: JSON.stringify({ 
-            model: 'gpt-4o-mini-tts', 
+            model: 'tts-1', 
             voice, 
             input: chunk.text, 
             format: 'mp3' 
@@ -328,16 +334,28 @@ export default function PodcastGenerator() {
             </Card>
           )}
 
-          {/* API key */}
-          <label className="flex flex-col gap-1">
-            <span className="font-medium">OpenAI API Key</span>
-            <Input 
-              type="password" 
-              placeholder="sk-..." 
-              value={apiKey} 
-              onChange={handleApiKeyChange} 
-            />
-          </label>
+          {/* API keys */}
+          <div className="space-y-4">
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">Gemini API Key</span>
+              <Input 
+                type="password" 
+                placeholder="AIza..." 
+                value={apiKey} 
+                onChange={handleApiKeyChange} 
+              />
+            </label>
+            
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">OpenAI API Key (for TTS)</span>
+              <Input 
+                type="password" 
+                placeholder="sk-..." 
+                value={openaiKey} 
+                onChange={handleOpenaiKeyChange} 
+              />
+            </label>
+          </div>
 
           {/* Topic */}
           <label className="flex flex-col gap-1">
@@ -364,7 +382,7 @@ export default function PodcastGenerator() {
               </motion.div>
             ) : (
               <>
-                <Mic className="w-4 h-4 mr-2" /> Generate Podcast
+                <Mic className="w-4 h-4 mr-2" /> Generate Podcast (Gemini Pro 2.5)
               </>
             )}
           </Button>
