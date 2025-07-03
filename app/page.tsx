@@ -40,6 +40,7 @@ export default function PodcastGenerator() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showHistory, setShowHistory] = useState(false);
   const [podcastHistory, setPodcastHistory] = useState<StoredPodcast[]>([]);
+  const [audioReady, setAudioReady] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -109,6 +110,7 @@ export default function PodcastGenerator() {
     setTranscript(podcast.transcript);
     setSegments(podcast.segments);
     setCurrentIdx(0);
+    setAudioReady(false);
     setShowHistory(false);
   };
 
@@ -129,6 +131,7 @@ export default function PodcastGenerator() {
     setTranscript('');
     setSegments([]);
     setCurrentIdx(0);
+    setAudioReady(false);
 
     try {
       /* ---------- 1) Chat transcript using Gemini ---------- */
@@ -242,9 +245,27 @@ export default function PodcastGenerator() {
   /** Sequential playback helpers */
   const playCurrent = () => {
     if (!audioRef.current || segments.length === 0) return;
-    audioRef.current.src = segments[currentIdx].url;
-    audioRef.current.playbackRate = playbackSpeed;
-    audioRef.current.play();
+    
+    const currentSegment = segments[currentIdx];
+    if (!currentSegment) return;
+    
+    // Ensure audio source is set (important for iOS)
+    if (audioRef.current.src !== currentSegment.url) {
+      audioRef.current.src = currentSegment.url;
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+    
+    // iOS Safari sometimes needs a fresh load for the first segment
+    if (currentIdx === 0 && audioRef.current.readyState === 0) {
+      audioRef.current.load();
+    }
+    
+    console.log(`Playing segment ${currentIdx + 1}/${segments.length} (${currentSegment.speaker})`);
+    
+    audioRef.current.play().catch(error => {
+      console.error(`Failed to play segment ${currentIdx + 1}:`, error);
+      setError(`Failed to play audio segment ${currentIdx + 1}. Try tapping the play button again.`);
+    });
   };
   
   const pauseCurrent = () => audioRef.current?.pause();
@@ -263,20 +284,64 @@ export default function PodcastGenerator() {
 
   useEffect(() => {
     if (!audioRef.current) return;
+    
+    const audio = audioRef.current;
+    
     const onEnded = () => {
       if (currentIdx + 1 < segments.length) setCurrentIdx((i) => i + 1);
     };
-    audioRef.current.addEventListener('ended', onEnded);
-    return () => audioRef.current?.removeEventListener('ended', onEnded);
+    
+    const onCanPlay = () => {
+      console.log('Audio can play - ready state:', audio.readyState);
+      setAudioReady(true);
+    };
+    
+    const onLoadStart = () => {
+      console.log('Audio loading started');
+      setAudioReady(false);
+    };
+    
+    const onError = (e: Event) => {
+      console.error('Audio error:', e);
+      setError('Audio playback error occurred');
+    };
+    
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('canplay', onCanPlay);
+    audio.addEventListener('loadstart', onLoadStart);
+    audio.addEventListener('error', onError);
+    
+    return () => {
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('canplay', onCanPlay);
+      audio.removeEventListener('loadstart', onLoadStart);
+      audio.removeEventListener('error', onError);
+    };
   }, [currentIdx, segments.length]);
 
   useEffect(() => {
     if (segments.length && audioRef.current) {
-      audioRef.current.src = segments[currentIdx].url;
+      const currentSegment = segments[currentIdx];
+      if (!currentSegment) return;
+      
+      // Set up the audio source and playback rate
+      audioRef.current.src = currentSegment.url;
       audioRef.current.playbackRate = playbackSpeed;
-      audioRef.current.play();
+      
+      // iOS Safari requires user interaction to play audio
+      // Don't auto-play the first segment, let user click play button
+      if (currentIdx === 0) {
+        // Just load the first segment, don't auto-play
+        audioRef.current.load();
+        console.log('First segment loaded, waiting for user interaction (iOS compatibility)');
+      } else {
+        // Auto-play subsequent segments (this should work as it's triggered by ended event)
+        audioRef.current.play().catch(error => {
+          console.error(`Failed to auto-play segment ${currentIdx + 1}:`, error);
+        });
+      }
     }
-  }, [currentIdx, segments]);
+  }, [currentIdx, segments, playbackSpeed]);
 
   /* ---------------- UI ---------------- */
   return (
@@ -402,7 +467,12 @@ export default function PodcastGenerator() {
             <div className="space-y-4 mt-4">
               {/* Main playback controls */}
               <div className="flex items-center gap-3">
-                <Button size="icon" onClick={playCurrent}>
+                <Button 
+                  size="icon" 
+                  onClick={playCurrent}
+                  disabled={!audioReady && currentIdx === 0}
+                  className={!audioReady && currentIdx === 0 ? 'opacity-50' : ''}
+                >
                   <Play className="w-4 h-4" />
                 </Button>
                 <Button size="icon" onClick={pauseCurrent}>
@@ -416,6 +486,9 @@ export default function PodcastGenerator() {
                   <SkipForward className="w-4 h-4" />
                 </Button>
                 <span className="text-sm">{currentIdx + 1}/{segments.length}</span>
+                {!audioReady && currentIdx === 0 && (
+                  <span className="text-xs text-gray-500">Loading audio...</span>
+                )}
               </div>
 
               {/* Speed controls */}
