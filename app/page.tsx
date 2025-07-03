@@ -121,20 +121,21 @@ export default function PodcastGenerator() {
 
     try {
       /* ---------- 1) Chat transcript ---------- */
-      const chatRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      const chatRes = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
+          model: 'gpt-4.1',
+          tools: [{"type": "web_search_preview"}],
+          input: [
             {
               role: 'system',
               content: [
                 'You are a podcast script writer. Generate a lively, engaging podcast transcript',
-                'with one host (labelled "Host:") and one guest (labelled "Guest:").',
+                'with one host (labelled "Host:") and one guest (labelled "Guest:"). Host is a man, and the guest is a woman.',
                 'The full transcript should run approximately 10 minutes when read aloud',
                 '(around 1 200–1 500 English words, adjust as needed).',
                 'Make the content highly creative and immersive: for history topics, invent a',
@@ -145,12 +146,12 @@ export default function PodcastGenerator() {
                 '(except for the `Host:` and `Guest:` labels).',
                 'For example, if the prompt is in Chinese, your script should also use Chinese.',
                 'Reply only with the transcript.'
-              ].join(' '),
+              ].join(' ')
             },
-            { 
-              role: 'user', 
-              content: `Podcast topic: ${topic}` 
-            },
+            {
+              role: 'user',
+              content: `Podcast topic: ${topic}`
+            }
           ],
           temperature: 0.8,
         }),
@@ -161,7 +162,9 @@ export default function PodcastGenerator() {
       }
       
       const chatData = await chatRes.json();
-      const content = chatData.choices?.[0]?.message?.content ?? '';
+      // Find the message output in the response
+      const messageOutput = chatData.output?.find((item: any) => item.type === 'message');
+      const content = messageOutput?.content?.[0]?.text ?? '';
       setTranscript(content);
 
       /* ---------- 2) Split by speaker ---------- */
