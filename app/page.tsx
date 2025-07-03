@@ -5,8 +5,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Mic, Play, Pause, SkipForward } from "lucide-react";
+import { Loader2, Mic, Play, Pause, SkipForward, History, ChevronDown } from "lucide-react";
 import { motion } from 'framer-motion';
+
+type PodcastSegment = { url: string; speaker: 'host' | 'guest'; text: string };
+
+type StoredPodcast = {
+  id: string;
+  topic: string;
+  transcript: string;
+  segments: PodcastSegment[];
+  createdAt: number;
+};
 
 /**
  * PodcastGenerator – client‑side component that:
@@ -15,27 +25,87 @@ import { motion } from 'framer-motion';
  * 3. Splits the transcript into speaker chunks, then calls TTS once per chunk with
  *    different voices (male = "alloy" for host, female = "nova" for guest).
  * 4. Plays the resulting audio segments sequentially with minimal controls.
+ * 5. Stores podcast history in localStorage and allows different playback speeds.
  */
 export default function PodcastGenerator() {
   const [apiKey, setApiKey] = useState('');
   const [topic, setTopic] = useState('');
   const [transcript, setTranscript] = useState('');
-  const [segments, setSegments] = useState<{ url: string; speaker: 'host' | 'guest'; text: string }[]>([]);
+  const [segments, setSegments] = useState<PodcastSegment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [currentIdx, setCurrentIdx] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [showHistory, setShowHistory] = useState(false);
+  const [podcastHistory, setPodcastHistory] = useState<StoredPodcast[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  /** Load persisted key once */
+  const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+  /** Load persisted key and history once */
   useEffect(() => {
     const stored = localStorage.getItem('openai_api_key') ?? '';
     if (stored) setApiKey(stored);
+    
+    loadPodcastHistory();
   }, []);
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const key = e.target.value.trim();
     setApiKey(key);
     localStorage.setItem('openai_api_key', key);
+  };
+
+  /** Load podcast history from localStorage */
+  const loadPodcastHistory = () => {
+    try {
+      const stored = localStorage.getItem('podcast_history');
+      if (stored) {
+        const history = JSON.parse(stored) as StoredPodcast[];
+        setPodcastHistory(history.sort((a, b) => b.createdAt - a.createdAt));
+      }
+    } catch (err) {
+      console.error('Failed to load podcast history:', err);
+    }
+  };
+
+  /** Save podcast to history */
+  const savePodcastToHistory = (topic: string, transcript: string, segments: PodcastSegment[]) => {
+    try {
+      const newPodcast: StoredPodcast = {
+        id: Date.now().toString(),
+        topic,
+        transcript,
+        segments,
+        createdAt: Date.now()
+      };
+
+      const existing = localStorage.getItem('podcast_history');
+      const history = existing ? JSON.parse(existing) as StoredPodcast[] : [];
+      history.unshift(newPodcast);
+      
+      // Keep only the last 10 podcasts
+      const trimmed = history.slice(0, 10);
+      localStorage.setItem('podcast_history', JSON.stringify(trimmed));
+      setPodcastHistory(trimmed);
+    } catch (err) {
+      console.error('Failed to save podcast to history:', err);
+    }
+  };
+
+  /** Load a podcast from history */
+  const loadPodcastFromHistory = (podcast: StoredPodcast) => {
+    setTopic(podcast.topic);
+    setTranscript(podcast.transcript);
+    setSegments(podcast.segments);
+    setCurrentIdx(0);
+    setShowHistory(false);
+  };
+
+  /** Clear podcast history */
+  const clearHistory = () => {
+    localStorage.removeItem('podcast_history');
+    setPodcastHistory([]);
   };
 
   /** Generate transcript → TTS segments */
@@ -100,7 +170,7 @@ export default function PodcastGenerator() {
       if (curr && buf) chunks.push({ speaker: curr, text: buf });
 
       /* ---------- 3) TTS per chunk ---------- */
-      const segs: { url: string; speaker: 'host' | 'guest'; text: string }[] = [];
+      const segs: PodcastSegment[] = [];
       for (const chunk of chunks) {
         const voice = chunk.speaker === 'host' ? 'alloy' : 'nova'; // male vs female
         const speechRes = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -117,6 +187,9 @@ export default function PodcastGenerator() {
         segs.push({ url: URL.createObjectURL(new Blob([bufArr], { type: 'audio/mpeg' })), speaker: chunk.speaker, text: chunk.text });
       }
       setSegments(segs);
+      
+      // Save to history
+      savePodcastToHistory(topic, content, segs);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -128,12 +201,22 @@ export default function PodcastGenerator() {
   const playCurrent = () => {
     if (!audioRef.current || segments.length === 0) return;
     audioRef.current.src = segments[currentIdx].url;
+    audioRef.current.playbackRate = playbackSpeed;
     audioRef.current.play();
   };
   const pauseCurrent = () => audioRef.current?.pause();
   const skipNext = () => {
     if (currentIdx + 1 < segments.length) setCurrentIdx((i) => i + 1);
   };
+
+  /** Update playback speed */
+  const changePlaybackSpeed = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  };
+
   useEffect(() => {
     if (!audioRef.current) return;
     const onEnded = () => {
@@ -142,9 +225,11 @@ export default function PodcastGenerator() {
     audioRef.current.addEventListener('ended', onEnded);
     return () => audioRef.current?.removeEventListener('ended', onEnded);
   }, [currentIdx, segments.length]);
+
   useEffect(() => {
     if (segments.length && audioRef.current) {
       audioRef.current.src = segments[currentIdx].url;
+      audioRef.current.playbackRate = playbackSpeed;
       audioRef.current.play();
     }
   }, [currentIdx, segments]);
@@ -154,7 +239,52 @@ export default function PodcastGenerator() {
     <main className="min-h-screen flex flex-col items-center justify-start p-4 gap-6 bg-gradient-to-b from-slate-50 to-slate-100">
       <Card className="w-full max-w-2xl shadow-xl rounded-2xl">
         <CardContent className="flex flex-col gap-4 p-6">
-          <h1 className="text-2xl font-bold mb-2">🎙️ AI Podcast Generator</h1>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-bold">🎙️ AI Podcast Generator</h1>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex items-center gap-2"
+            >
+              <History className="w-4 h-4" />
+              History
+            </Button>
+          </div>
+
+          {/* History Panel */}
+          {showHistory && (
+            <Card className="border-2 border-dashed border-gray-300">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold">Podcast History</h3>
+                  {podcastHistory.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearHistory}>
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+                {podcastHistory.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No podcasts generated yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {podcastHistory.map((podcast) => (
+                      <div 
+                        key={podcast.id}
+                        className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                        onClick={() => loadPodcastFromHistory(podcast)}
+                      >
+                        <div className="font-medium text-sm">{podcast.topic}</div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(podcast.createdAt).toLocaleDateString()} • {podcast.segments.length} segments
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* API key */}
           <label className="flex flex-col gap-1">
@@ -188,17 +318,49 @@ export default function PodcastGenerator() {
 
           {/* Playback controls */}
           {segments.length > 0 && (
-            <div className="flex items-center gap-3 mt-4">
-              <Button size="icon" onClick={playCurrent}>
-                <Play className="w-4 h-4" />
-              </Button>
-              <Button size="icon" onClick={pauseCurrent}>
-                <Pause className="w-4 h-4" />
-              </Button>
-              <Button size="icon" onClick={skipNext} disabled={currentIdx + 1 >= segments.length}>
-                <SkipForward className="w-4 h-4" />
-              </Button>
-              <span className="text-sm">{currentIdx + 1}/{segments.length}</span>
+            <div className="space-y-4 mt-4">
+              {/* Main playback controls */}
+              <div className="flex items-center gap-3">
+                <Button size="icon" onClick={playCurrent}>
+                  <Play className="w-4 h-4" />
+                </Button>
+                <Button size="icon" onClick={pauseCurrent}>
+                  <Pause className="w-4 h-4" />
+                </Button>
+                <Button size="icon" onClick={skipNext} disabled={currentIdx + 1 >= segments.length}>
+                  <SkipForward className="w-4 h-4" />
+                </Button>
+                <span className="text-sm">{currentIdx + 1}/{segments.length}</span>
+              </div>
+
+              {/* Speed controls */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Speed:</span>
+                <div className="flex gap-1">
+                  {speedOptions.map((speed) => (
+                    <Button
+                      key={speed}
+                      variant={playbackSpeed === speed ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => changePlaybackSpeed(speed)}
+                      className="px-3 py-1 text-xs"
+                    >
+                      {speed}x
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Current segment info */}
+              {segments[currentIdx] && (
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <div className="text-xs text-gray-500 mb-1">
+                    {segments[currentIdx].speaker === 'host' ? '🎙️ Host' : '👤 Guest'}
+                  </div>
+                  <div className="text-sm">{segments[currentIdx].text.slice(0, 150)}...</div>
+                </div>
+              )}
+
               <audio ref={audioRef} hidden />
             </div>
           )}
